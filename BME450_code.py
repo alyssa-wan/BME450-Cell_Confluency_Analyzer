@@ -15,12 +15,12 @@ transform = transforms.Compose([
 ])
 
 training_data = datasets.ImageFolder(
-    root='', #root path to training data
+    root='/Users/alyssawan/Documents/BME450 Final Project/BME 450 Project Images/Train', #root path to training data
     transform=transform
 )
 
 test_data = datasets.ImageFolder(
-    root='', #root path to test data
+    root='/Users/alyssawan/Documents/BME450 Final Project/BME 450 Project Images/Test', #root path to test data
     transform=transform
 )
 
