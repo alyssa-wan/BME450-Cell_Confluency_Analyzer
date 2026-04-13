@@ -7,21 +7,39 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 import torchvision.transforms as transforms
 
-#transformation pipeline
-transform = transforms.Compose([
-    transforms.Resize((28, 28)),          # Resize images to 28x28
-    transforms.Grayscale(num_output_channels=1), # Convert to grayscale (1 channel)
-    transforms.ToTensor()                 # Convert images to PyTorch tensors
+#transformation pipeline (Updated to include data augmentation techniques)
+transform_train = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.CenterCrop(200),          # ← crops out the black microscope border
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=1),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(20),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5])
 ])
+
+#No augmentation on test data, only resizing and normalization
+transform_test = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.CenterCrop(200),          # ← same crop on test
+    transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=1),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5], std=[0.5])
+])
+
 
 training_data = datasets.ImageFolder(
     root='/Users/alyssawan/Documents/BME450 Final Project/BME 450 Project Images/Train', #root path to training data
-    transform=transform
+    transform=transform_train
 )
 
 test_data = datasets.ImageFolder(
     root='/Users/alyssawan/Documents/BME450 Final Project/BME 450 Project Images/Test', #root path to test data
-    transform=transform
+    transform=transform_test   
 )
 
 #printing out data
@@ -42,20 +60,56 @@ print('Inputs sample normalized - min,max,mean,std:', ima.min().item(), ima.max(
 iman = ima.permute(1, 2, 0) # needed to be able to plot
 plt.imshow(iman)
 
+#Switched to an CNN architecture for better performance on image data
 class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.flatten = nn.Flatten()
-        self.l1 = nn.Linear(28*28, 512)
-        self.l2 = nn.Linear(512, 512)
-        self.l3 = nn.Linear(512, len(categories)) # Modified to use dynamic number of classes
+    def __init__(self, num_classes):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            # Block 1
+            nn.Conv2d(1, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),           # → 112x112
+
+            # Block 2
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),           # → 56x56
+
+            # Block 3
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),           # → 28x28
+
+            # Block 4
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2),           # → 14x14
+        )
+
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))   # → [batch, 256, 1, 1]
+
+        self.classifier = nn.Sequential(
+            nn.Linear(256, 512),
+            nn.ReLU(),
+            nn.Dropout(0.4),           # reduces overfitting
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes)
+        )
 
     def forward(self, x):
-        x = self.flatten(x)
-        x = F.relu(self.l1(x))
-        x = F.relu(self.l2(x))
-        output = self.l3(x)
-        return output
+        x = self.conv(x)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+
     
 def train_loop(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -90,9 +144,9 @@ def test_loop(dataloader, model, loss_fn):
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
     
 #training the model
-model = Net()
+model = Net(num_classes=len(categories))
 
-batch_size = 64
+batch_size = 32 #smaller batch size can help with generalization, but may increase training time. Adjust based on dataset size and hardware capabilities.
 train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
 test_dataloader = DataLoader(test_data, batch_size=batch_size,shuffle=False)
 
@@ -102,7 +156,7 @@ learning_rate = 1e-3
 # it can infer learning rate and all hyper-parameters automatically
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-epochs = 10
+epochs = 15
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimizer)
@@ -113,7 +167,7 @@ print("Done!")
 sample_num = 6 # select a random sample
 
 with torch.no_grad():
-    r = model(training_data[sample_num][0])
+    r = model(training_data[sample_num][0].unsqueeze(0))
 
 print('neural network output pseudo-probabilities:', r)
 print('neural network output class number:', torch.argmax(r).item())
