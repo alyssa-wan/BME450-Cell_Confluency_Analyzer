@@ -15,7 +15,7 @@ augment = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.CenterCrop(200),
     transforms.Resize((224, 224)),
-    transforms.Grayscale(num_output_channels=1), # ResNet expects 3 channels, so we convert grayscale to 3-channel by replicating
+    transforms.Grayscale(num_output_channels=1), 
     transforms.RandomHorizontalFlip(),
     transforms.RandomVerticalFlip(),
     transforms.RandomRotation(10),
@@ -36,14 +36,14 @@ test_dir = '/Users/alyssawan/Documents/BME450 Final Project/BME 450 Project Imag
 #    print(f"{class_name}: deleted {deleted} augmented files, {len(os.listdir(class_dir))} originals remaining")
 
 #Augmenting the training data by applying random transformations to each image and saving the augmented images back to the same directory with a new filename. This will help increase the diversity of the training data and improve model generalization.
-#for class_name, num_copies in [('Low Confluency', 3), ('Medium Confluency', 5), ('High Confluency', 4)]:
+#for class_name, num_copies in [('Low Confluency', 2), ('Medium Confluency', 2), ('High Confluency', 2)]:
 #    class_dir = os.path.join(base_dir, class_name)
 #    for filename in os.listdir(class_dir):
 #        if filename.endswith(('.PNG', '.JPG', '.JPEG', '.png', '.jpg', '.jpeg')):
 #            img = Image.open(os.path.join(class_dir, filename))
 #            for i in range(num_copies):
-#                augmented = augment(img)
-#                save_image(augmented, os.path.join(class_dir, f'aug_{i}_{filename}'))
+#               augmented = augment(img)
+#               save_image(augmented, os.path.join(class_dir, f'aug_{i}_{filename}'))
 #    print(f"{class_name}: {len(os.listdir(class_dir))} total files after augmentation")
 
 #transformation pipeline (Updated to include data augmentation techniques)
@@ -102,10 +102,10 @@ plt.imshow(iman)
 class Net(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
-        self.model = models.resnet34(weights='IMAGENET1K_V1')
+        self.model = models.resnet18(weights='IMAGENET1K_V1')
         self.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.model.fc = nn.Sequential(
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),
             nn.Linear(512, num_classes)
         )
 
@@ -131,6 +131,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 
 #testing the model
 def test_loop(dataloader, model, loss_fn):
+    model.eval()
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     test_loss, correct = 0, 0
@@ -189,7 +190,7 @@ train_dataloader = DataLoader(training_data, batch_size=batch_size, sampler=samp
 loss_fn = nn.CrossEntropyLoss(label_smoothing=0.2)
 test_dataloader = DataLoader(test_data, batch_size=batch_size,shuffle=False)
         
-loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1) # used for categorization
+loss_fn = nn.CrossEntropyLoss() # used for categorization
 learning_rate = 1e-5
 # note: optimizer is Adam: one of the best optimizers to date
 # it can infer learning rate and all hyper-parameters automatically
@@ -200,13 +201,13 @@ optimizer = optim.Adam([
     {'params': model.model.layer3.parameters(), 'lr': 2e-5},
     {'params': model.model.layer4.parameters(), 'lr': 2e-5},
     {'params': model.model.fc.parameters(), 'lr': 1e-5}
-], lr=5e-5, weight_decay=1e-2)
+], lr=5e-5, weight_decay=1e-3)
 
-epochs = 20
+epochs = 40
 best_acc = 0
-patience, wait = 5, 0
+patience, wait = 10, 0
 save_path = '/Users/alyssawan/Documents/BME450 Final Project/best_model.pt'
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=4, factor=0.2, verbose=True)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=4, factor=0.2)
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimizer)
